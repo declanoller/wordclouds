@@ -3,7 +3,7 @@ from commonFunctions import SlackTools
 
 st = SlackTools()
 
-path = '/home/declan/Documents/code/data/slack export 3.5.2018'
+path = '/home/declan/Documents/code/data/slack_export_7.16.2018'
 
 a = st.getAllDataInDirRecursively(path)
 #print(len(st.combineAllDat(a))," entries combined")

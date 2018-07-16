@@ -12,7 +12,7 @@ class SlackTools:
 
 
     def produceManyWordClouds(self,userList):
-        path = '/home/declan/Documents/code/data/slack export 3.5.2018'
+        path = '/home/declan/Documents/code/data/slack_export_7.16.2018'
 
         a = self.getAllDataInDirRecursively(path)
         #print(len(self.combineAllDat(a))," entries combined")
@@ -35,31 +35,55 @@ class SlackTools:
 
     def produceUniqueWordClouds(self,users):
 
-        path = '/home/declan/Documents/code/data/slack export 3.5.2018'
+        path = '/home/declan/Documents/code/data/slack_export_7.16.2018'
 
         a = self.getAllDataInDirRecursively(path)
         #print(len(self.combineAllDat(a))," entries combined")
         allDat = self.combineAllDat(a)
 
-        N_unique = 5
+        N_unique = 15
 
+        users_word_rankings = {}
         users_corpuses = {}
 
+        translator = str.maketrans('', '', string.punctuation)
+        num_str = [str(i) for i in range(10)]
+
+
+        #preparing all the corpuses
         for user in users:
+            #get user ID and corpus
             testuser = self.name2Id(user)
             textcorp = self.getUserTextCorpus(allDat,testuser)
+
+            #turn the whole corpus to lowercase
             textcorp = map(str.lower,textcorp)
-            #textcorp = map(lambda str: str.translate(None,string.punctuation),textcorp)
-            textcorp = [word.translate(None,string.punctuation) for word in textcorp]
+            #get rid of punctuation
+            textcorp = map(lambda str: str.translate(translator),textcorp)
+            #get rid of bobby's weird punctuation
+            textcorp = list(map(lambda str: str.replace('’',''),textcorp))
+            #get rid of single digit numbers
+            textcorp = [word for word in textcorp if word not in num_str]
+            #get rid of user's own name
+            textcorp = [word for word in textcorp if word!=testuser.lower()]
+
+            #textcorp = self.removeListFromCorpus(textcorp,self.getNaughtyWords())
+            textcorp = self.removeListFromCorpus(textcorp,['youve','hour','minutes','one','two','three','used'])
+
+            #sort by most commonly used
             counts = Counter(textcorp).most_common(600)
             most_common_words = [item[0] for item in counts]
-            #users_corpuses.append((user,most_common_words))
-            users_corpuses[user] = most_common_words
-            print('\n{}\'s most common words:\n'.format(user))
-            [print(word) for word in most_common_words[:2*N_unique]]
-            print()
+            #add to user:sorted corpus dict
+            users_word_rankings[user] = most_common_words
+            users_corpuses[user] = textcorp
+
+            #print('\n{}\'s most common words:\n'.format(user))
+            #[print(word) for word in most_common_words[:2*N_unique]]
+            #print()
 
 
+
+        #making the corpuses more personalized
         allowed_others = 0
 
         for user in users:
@@ -67,70 +91,105 @@ class SlackTools:
 
             other_users = copy(users)
             other_users.remove(user)
-            print('other users:',other_users)
+            #print('other users:',other_users)
             index = 0
             while index<=N_unique:
                 others_with_word = 0
-                cur_word = users_corpuses[user][index]
-                print('\ncur word is \'{}\''.format(cur_word))
+                cur_word = users_word_rankings[user][index]
+                #print('\ncur word is \'{}\''.format(cur_word))
 
                 for other_user in other_users:
-                    if cur_word in users_corpuses[other_user][:N_unique]:
-                        print('{} also has this word'.format(other_user))
+                    if cur_word in users_word_rankings[other_user][:N_unique]:
+                        #print('{} also has this word'.format(other_user))
                         others_with_word += 1
 
                 if others_with_word>allowed_others:
-                    print('removing \'{}\' from all users'.format(cur_word))
+                    #print('removing \'{}\' from all users'.format(cur_word))
                     for tempuser in users:
-                        users_corpuses[tempuser].remove(cur_word)
+                        if cur_word in users_word_rankings[tempuser]:
+                            #print('removing from ',tempuser)
+                            users_word_rankings[tempuser].remove(cur_word)
                     index = 0
                 else:
                     index += 1
 
             print('\n\nTop {} unique words for {} at this point'.format(N_unique,user))
-            [print('{}. {}'.format(i,word)) for i,word in enumerate(users_corpuses[user][:N_unique])]
+            [print('{}. {}'.format(i,word)) for i,word in enumerate(users_word_rankings[user][:N_unique])]
+
+        print('\n\n\n*****************************************************\n\n\n')
+
+
+        #Get remaining words and remove other words
+        for user in users:
+            users_corpuses[user] = self.keepListInCorpus(users_corpuses[user],users_word_rankings[user])
+            users_word_rankings[user] = self.keepListInCorpus(users_word_rankings[user],users_word_rankings[user])
+
+
 
         for user in users:
             print('\n\nTop {} unique words for {}'.format(N_unique,user))
-            [print('{}. {}'.format(i,word)) for i,word in enumerate(users_corpuses[user][:N_unique])]
+            [print('{}. {}'.format(i,word)) for i,word in enumerate(users_word_rankings[user][:N_unique])]
+
+            self.outputWordCloud(user,users_corpuses[user],'personalized_naughty')
+
+
+
+
+
+
+    def getNaughtyWords(self):
+        return(
+        ['fuck','fucked','shit','shitty','shitted','shat',
+        'cum','ass','jizz','cunt','suck','cuck','sex',
+        'cock','penis','pussy','retard','dick',
+        'balls','fart','asshole','butthole','rape',
+        'shitting']
+        )
+
+    def outputWordCloud(self,user,corpus,other_label=''):
+
+        outfile_stem = user+'_corpus_'+other_label
+        outfile_text = outfile_stem+'.txt'
+        outfile_img = outfile_stem+'.png'
+        f = open(outfile_text,'w')
+        f.close()
+        f = open(outfile_text,'a')
+        for word in corpus:
+            f.write(word)
+            f.write('\n')
+        f.close()
+
+        wordcloud_cmd = 'wordcloud_cli.py --text {} --image {} --height 500 --width 800'.format(outfile_text,outfile_img)
+        os.system(wordcloud_cmd)
 
     def produceWordCloud(self,allDat,user,removeList=[]):
         testuser = self.name2Id(user)
         print(user)
         print(testuser)
 
-
         textcorp = self.getUserTextCorpus(allDat,testuser)
-
         textcorp = map(str.lower,textcorp)
 
+        remove_words = []
         remove_words = ['yeah','one','uploaded','fpff.slack.com','http','think','thing','file','U1','U2','guy','look']+removeList
 
-        naughty_words = ['fuck','shit','cum','ass','jizz','cunt','suck','cuck','sex','cock','penis','pussy']
-
-        remove_words = remove_words + naughty_words
+        remove_words = remove_words + self.getNaughtyWords()
 
         remove_words = map(str.lower,remove_words)
 
         for word in remove_words:
             textcorp = self.removeFromCorpus(textcorp,word)
 
+        self.outputWordCloud(user,textcorp,'removedcommon')
 
 
+    def removeListFromCorpus(self,corpus,remove_list):
+        newlist = [word for word in corpus if word not in remove_list]
+        return(newlist)
 
-
-        outfile = user+'_corpus.txt'
-        f = open(outfile,'w')
-        f.close()
-        f = open(outfile,'a')
-        for word in textcorp:
-            f.write(word)
-            f.write('\n')
-        f.close()
-
-        wordcloud_cmd = 'wordcloud_cli.py --text {}_corpus.txt --image {}_cloud.png --height 500 --width 800'.format(user,user)
-        os.system(wordcloud_cmd)
-
+    def keepListInCorpus(self,corpus,keep_list):
+        newlist = [word for word in corpus if word in keep_list]
+        return(newlist)
 
     def removeFromCorpus(self,list,value):
         newlist = [word for word in list if value not in word]
